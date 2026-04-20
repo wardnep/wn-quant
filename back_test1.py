@@ -31,6 +31,8 @@ lookback = 10
 df['swing_low'] = df['low'].rolling(lookback).min()
 df['swing_high'] = df['high'].rolling(lookback).max()
 
+print(df[['ema9', 'ema200', 'signal', 'high_low', 'high_close', 'low_close', 'tr', 'atr']].tail())
+
 # === BACKTEST ===
 balance = 1000
 risk_per_trade = 0.01
