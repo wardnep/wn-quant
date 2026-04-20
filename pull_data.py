@@ -8,7 +8,7 @@ exchange = ccxt.binance({
     'enableRateLimit': True
 })
 
-symbol = 'PAXG/USDT'
+symbol = 'BTC/USDT'
 days_back = 1000
 
 start_date = datetime.now() - timedelta(days=days_back)
@@ -71,6 +71,6 @@ def fetch_all_ohlcv(tf, filename):
 
 # === RUN ===
 if __name__ == "__main__":
-    fetch_all_ohlcv('5m', 'PAXGUSDT_5m.csv')
-    fetch_all_ohlcv('15m', 'PAXGUSDT_15m.csv')
-    fetch_all_ohlcv('1h', 'PAXGUSDT_1h.csv')
+    fetch_all_ohlcv('5m', 'BTCUSDT_5m.csv')
+    fetch_all_ohlcv('15m', 'BTCUSDT_15m.csv')
+    fetch_all_ohlcv('1h', 'BTCUSDT_1h.csv')
