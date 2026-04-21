@@ -1,14 +1,14 @@
-# EMA9 ตัดกับ EMA200
-# SL ที่ swing low/high + ATR
-# RR 1:2
+# EMA9 ตัด EMA200
+# SL ที่ swing long/high
+# RR 1:1.5
 
 import pandas as pd
 import numpy as np
 
 # === LOAD DATA ===
-df = pd.read_csv("./csv/BTCUSDT_5m.csv")
+df = pd.read_csv("./csv/BTCUSDT_15m.csv")
 df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
-df = df.sort_values('timestamp')
+df = df.sort_values('timestamp').reset_index(drop=True)
 
 # === EMA ===
 df['ema9'] = df['close'].ewm(span=9).mean()
@@ -27,18 +27,16 @@ df['tr'] = df[['high_low', 'high_close', 'low_close']].max(axis=1)
 df['atr'] = df['tr'].rolling(14).mean()
 
 # === SWING ===
-lookback = 10
+lookback = 20
 df['swing_low'] = df['low'].rolling(lookback).min()
 df['swing_high'] = df['high'].rolling(lookback).max()
-
-print(df[['ema9', 'ema200', 'signal', 'high_low', 'high_close', 'low_close', 'tr', 'atr']].tail())
 
 # === BACKTEST ===
 balance = 1000
 risk_per_trade = 0.01
 
 position = 0
-entry = sl = tp = 0
+entry = sl = tp = None
 
 trades = []
 
@@ -47,12 +45,16 @@ total_rows = len(df)
 for i in range(total_rows):
     row = df.iloc[i]
 
-    # === PROGRESS ทุก 10,000 แท่ง ===
+    # === SKIP ถ้า indicator ยังไม่พร้อม ===
+    if pd.isna(row['atr']) or pd.isna(row['swing_low']) or pd.isna(row['swing_high']):
+        continue
+
+    # === PROGRESS ===
     if i % 10000 == 0:
         percent = (i / total_rows) * 100
         print(f"⏳ {percent:.2f}% | index {i}/{total_rows} | balance {balance:.2f}")
 
-    # === CHECK EXIT FIRST ===
+    # === EXIT ===
     if position == 1:
         if row['low'] <= sl:
             pnl = -risk_per_trade
@@ -62,7 +64,7 @@ for i in range(total_rows):
             print(f"❌ SL LONG @ {row['datetime']} | balance {balance:.2f}")
 
         elif row['high'] >= tp:
-            pnl = risk_per_trade * 2
+            pnl = risk_per_trade * 1.5
             balance *= (1 + pnl)
             trades.append(pnl)
             position = 0
@@ -77,7 +79,7 @@ for i in range(total_rows):
             print(f"❌ SL SHORT @ {row['datetime']} | balance {balance:.2f}")
 
         elif row['low'] <= tp:
-            pnl = risk_per_trade * 2
+            pnl = risk_per_trade * 1.5
             balance *= (1 + pnl)
             trades.append(pnl)
             position = 0
@@ -88,16 +90,31 @@ for i in range(total_rows):
         if row['signal'] == 1:
             entry = row['close']
             sl = row['swing_low'] - row['atr']
-            tp = entry + (entry - sl) * 2
+
+            if pd.isna(sl):
+                continue
+
+            tp = entry + (entry - sl) * 1.5
             position = 1
-            print(f"🟢 BUY @ {row['datetime']} | entry {entry:.2f}")
+
+            print(f"🟢 BUY @ {row['datetime']} | entry {entry:.2f} | sl {sl:.2f} | tp {tp:.2f}")
 
         elif row['signal'] == -1:
             entry = row['close']
             sl = row['swing_high'] + row['atr']
-            tp = entry - (sl - entry) * 2
+
+            if pd.isna(sl):
+                continue
+
+            tp = entry - (sl - entry) * 1.5
             position = -1
-            print(f"🔴 SELL @ {row['datetime']} | entry {entry:.2f}")
+
+            print(f"🔴 SELL @ {row['datetime']} | entry {entry:.2f} | sl {sl:.2f} | tp {tp:.2f}")
+
+# === FORCE CLOSE ===
+if position != 0:
+    print("⚠️ Force close at end")
+    position = 0
 
 # === RESULT ===
 total_trades = len(trades)
