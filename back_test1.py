@@ -49,10 +49,10 @@ for i in range(total_rows):
     if pd.isna(row['atr']) or pd.isna(row['swing_low']) or pd.isna(row['swing_high']):
         continue
 
-    # === PROGRESS ===
-    if i % 10000 == 0:
-        percent = (i / total_rows) * 100
-        print(f"⏳ {percent:.2f}% | index {i}/{total_rows} | balance {balance:.2f}")
+    # # === PROGRESS ===
+    # if i % 10000 == 0:
+    #     percent = (i / total_rows) * 100
+    #     print(f"⏳ {percent:.2f}% | index {i}/{total_rows} | balance {balance:.2f}")
 
     # === EXIT ===
     if position == 1:
@@ -61,14 +61,14 @@ for i in range(total_rows):
             balance *= (1 + pnl)
             trades.append(pnl)
             position = 0
-            print(f"❌ SL LONG @ {row['datetime']} | balance {balance:.2f}")
+            # print(f"❌ SL LONG @ {row['datetime']} | balance {balance:.2f}")
 
         elif row['high'] >= tp:
             pnl = risk_per_trade * 1.5
             balance *= (1 + pnl)
             trades.append(pnl)
             position = 0
-            print(f"✅ TP LONG @ {row['datetime']} | balance {balance:.2f}")
+            # print(f"✅ TP LONG @ {row['datetime']} | balance {balance:.2f}")
 
     elif position == -1:
         if row['high'] >= sl:
@@ -76,14 +76,14 @@ for i in range(total_rows):
             balance *= (1 + pnl)
             trades.append(pnl)
             position = 0
-            print(f"❌ SL SHORT @ {row['datetime']} | balance {balance:.2f}")
+            # print(f"❌ SL SHORT @ {row['datetime']} | balance {balance:.2f}")
 
         elif row['low'] <= tp:
             pnl = risk_per_trade * 1.5
             balance *= (1 + pnl)
             trades.append(pnl)
             position = 0
-            print(f"✅ TP SHORT @ {row['datetime']} | balance {balance:.2f}")
+            # print(f"✅ TP SHORT @ {row['datetime']} | balance {balance:.2f}")
 
     # === ENTRY ===
     if position == 0:
@@ -97,7 +97,7 @@ for i in range(total_rows):
             tp = entry + (entry - sl) * 1.5
             position = 1
 
-            print(f"🟢 BUY @ {row['datetime']} | entry {entry:.2f} | sl {sl:.2f} | tp {tp:.2f}")
+            # print(f"🟢 BUY @ {row['datetime']} | entry {entry:.2f} | sl {sl:.2f} | tp {tp:.2f}")
 
         elif row['signal'] == -1:
             entry = row['close']
@@ -109,7 +109,9 @@ for i in range(total_rows):
             tp = entry - (sl - entry) * 1.5
             position = -1
 
-            print(f"🔴 SELL @ {row['datetime']} | entry {entry:.2f} | sl {sl:.2f} | tp {tp:.2f}")
+            # print(f"🔴 SELL @ {row['datetime']} | entry {entry:.2f} | sl {sl:.2f} | tp {tp:.2f}")
+
+    print(f"@ {row['datetime']} | balance {balance:.2f}", end="\r")
 
 # === FORCE CLOSE ===
 if position != 0:
