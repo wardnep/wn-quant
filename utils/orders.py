@@ -6,7 +6,6 @@ def open_long(exchange, symbol, amount):
         amount=amount
     )
 
-
 def open_short(exchange, symbol, amount):
     return exchange.create_order(
         symbol=symbol,
@@ -15,8 +14,7 @@ def open_short(exchange, symbol, amount):
         amount=amount
     )
 
-
-def place_long_sl(exchange, symbol, amount, sl_price):
+def place_sl(exchange, symbol, amount, sl_price, side):
     return exchange.create_order(
         symbol=symbol,
         type='STOP_MARKET',
@@ -28,8 +26,7 @@ def place_long_sl(exchange, symbol, amount, sl_price):
         }
     )
 
-
-def place_long_tp(exchange, symbol, amount, tp_price):
+def place_tp(exchange, symbol, amount, tp_price, side):
     return exchange.create_order(
         symbol=symbol,
         type='TAKE_PROFIT_MARKET',
