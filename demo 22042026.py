@@ -1,11 +1,18 @@
 import ccxt
+import os
+
+from dotenv import load_dotenv
 from orders import (
     open_long,
     open_short,
     place_long_sl,
     place_long_tp
 )
-from config import API_KEY, API_SECRET
+
+load_dotenv()
+
+API_KEY = os.getenv('BINANCE_DEMO_API_KEY')
+API_SECRET = os.getenv('BINANCE_DEMO_API_SECRET')
 
 exchange = ccxt.binance({
     'apiKey': API_KEY,
