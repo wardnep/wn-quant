@@ -9,7 +9,6 @@ import numpy as np
 
 # === LOAD DATA ===
 df = pd.read_csv("./csv/PAXGUSDT_15m.csv")
-print(len(df))
 df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
 df = df.sort_values('timestamp').reset_index(drop=True)
 

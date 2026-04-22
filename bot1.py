@@ -1,14 +1,47 @@
+# เช็กว่ามี position ค้างอยู่หรือไม่
+# ยิง stop loss / take profit อัตโนมัติ
+# กันเปิด order ซ้ำ
+# กัน bot restart แล้วลืม position เดิม
+# จัดการ minimum order size
+# ใช้ Binance Futures Testnet ก่อน
+# เพิ่ม logging ลง database ทุก order
+# เช็กเวลาปิดแท่งจริงก่อนเข้าออเดอร์
+# เพิ่ม notification ผ่าน Line หรือ Telegram
+
+import time
+import sqlite3
 import pandas as pd
 import numpy as np
-import sqlite3
+import ccxt
+
+# ==============================
+# === BINANCE CONFIG ===========
+# ==============================
+exchange = ccxt.binance({
+    'apiKey': 'YOUR_API_KEY',
+    'secret': 'YOUR_SECRET_KEY',
+    'enableRateLimit': True,
+    'options': {
+        'defaultType': 'future'
+    }
+})
+
+exchange.set_sandbox_mode(True)
+
+symbol = 'BTC/USDT'
+timeframe = '5m'
+risk = 0.01
+balance = 1000
+position = 0
+entry = sl = tp = None
 
 # ==============================
 # === DATABASE SETUP ===========
 # ==============================
-conn = sqlite3.connect("trading.db")
+conn = sqlite3.connect('trading.db')
 cursor = conn.cursor()
 
-cursor.execute("""
+cursor.execute('''
 CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     datetime TEXT,
@@ -20,26 +53,30 @@ CREATE TABLE IF NOT EXISTS trades (
     exit REAL,
     pnl REAL
 )
-""")
+''')
 conn.commit()
-
-# ==============================
-# === LOAD DATA ================
-# ==============================
-df = pd.read_csv("./csv/BTCUSDT_5m.csv")
-df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
-df = df.sort_values('timestamp').reset_index(drop=True)
 
 # ==============================
 # === HEIKIN ASHI ==============
 # ==============================
 def heikin_ashi(df):
     ha = df.copy()
-    ha['ha_close'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
 
-    ha_open = [(df['open'][0] + df['close'][0]) / 2]
+    ha['ha_close'] = (
+        df['open'] +
+        df['high'] +
+        df['low'] +
+        df['close']
+    ) / 4
+
+    ha_open = [
+        (df['open'].iloc[0] + df['close'].iloc[0]) / 2
+    ]
+
     for i in range(1, len(df)):
-        ha_open.append((ha_open[i-1] + ha['ha_close'][i-1]) / 2)
+        ha_open.append(
+            (ha_open[i - 1] + ha['ha_close'].iloc[i - 1]) / 2
+        )
 
     ha['ha_open'] = ha_open
     ha['ha_high'] = ha[['high', 'ha_open', 'ha_close']].max(axis=1)
@@ -47,176 +84,135 @@ def heikin_ashi(df):
 
     return ha
 
-df = heikin_ashi(df)
+# ==============================
+# === LOAD MARKET DATA =========
+# ==============================
+def load_data():
+    ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=300)
+
+    df = pd.DataFrame(ohlcv, columns=[
+        'timestamp', 'open', 'high', 'low', 'close', 'volume'
+    ])
+
+    df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+    return df
 
 # ==============================
 # === INDICATORS ===============
 # ==============================
-df['ema9'] = df['ha_close'].ewm(span=9).mean()
-df['ema200'] = df['ha_close'].ewm(span=200).mean()
+def prepare_dataframe(df):
+    df = heikin_ashi(df)
 
-df['tr'] = np.maximum.reduce([
-    df['high'] - df['low'],
-    abs(df['high'] - df['close'].shift(1)),
-    abs(df['low'] - df['close'].shift(1))
-])
-df['atr'] = df['tr'].rolling(14).mean()
-df['atr_mean'] = df['atr'].rolling(50).mean()
+    df['ema9'] = df['ha_close'].ewm(span=9).mean()
+    df['ema200'] = df['ha_close'].ewm(span=200).mean()
 
-lookback = 10
-df['swing_low'] = df['low'].rolling(lookback).min()
-df['swing_high'] = df['high'].rolling(lookback).max()
+    df['tr'] = np.maximum.reduce([
+        df['high'] - df['low'],
+        abs(df['high'] - df['close'].shift(1)),
+        abs(df['low'] - df['close'].shift(1))
+    ])
+
+    df['atr'] = df['tr'].rolling(14).mean()
+    df['atr_mean'] = df['atr'].rolling(50).mean()
+
+    lookback = 10
+    df['swing_low'] = df['low'].rolling(lookback).min()
+    df['swing_high'] = df['high'].rolling(lookback).max()
+
+    return df
 
 # ==============================
-# === BACKTEST =================
+# === POSITION SIZE ============
 # ==============================
-balance = 1000
-risk = 0.01
+def calculate_size(balance, entry, sl, risk_percent):
+    risk_amount = balance * risk_percent
+    stop_distance = abs(entry - sl)
 
-position = 0
-entry = sl = tp = None
-entry_time = None
+    if stop_distance == 0:
+        return 0
 
-trades = []
+    size = risk_amount / stop_distance
+    return round(size, 3)
 
-total_rows = len(df)
+# ==============================
+# === PLACE ORDER ==============
+# ==============================
+def open_long(amount):
+    return exchange.create_order(
+        symbol=symbol,
+        type='market',
+        side='buy',
+        amount=amount,
+        params={
+            'positionSide': 'LONG'
+        }
+    )
 
-for i in range(total_rows):
-    row = df.iloc[i]
 
-    # skip NaN
-    if pd.isna(row['atr']) or pd.isna(row['swing_low']):
-        continue
+def open_short(amount):
+    return exchange.create_order(
+        symbol=symbol,
+        type='market',
+        side='sell',
+        amount=amount,
+        params={
+            'positionSide': 'SHORT'
+        }
+    )
 
-    # === PROGRESS ===
-    if i % 1000 == 0 or i == total_rows - 1:
-        percent = (i / total_rows) * 100
-        status = "LONG" if position == 1 else "SHORT" if position == -1 else "FLAT"
+# ==============================
+# === MAIN LOOP ================
+# ==============================
+while True:
+    try:
+        df = load_data()
+        df = prepare_dataframe(df)
 
-        print(
-            f"⏳ {percent:6.2f}% | bal={balance:8.2f} | pos={status} | trades={len(trades)}",
-            end="\r",
-            flush=True
-        )
+        row = df.iloc[-1]
 
-    # ==================
-    # === EXIT =========
-    # ==================
-    exit_price = None
-
-    if position == 1:
-        if row['low'] <= sl:
-            pnl = -risk
-            exit_price = sl
-
-        elif row['high'] >= tp:
-            pnl = risk * 1.5
-            exit_price = tp
-
-        else:
-            pnl = None
-
-        if pnl is not None:
-            balance *= (1 + pnl)
-            trades.append(pnl)
-
-            # === LOG DB ===
-            cursor.execute("""
-            INSERT INTO trades (datetime, symbol, side, entry, sl, tp, exit, pnl)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                str(row['datetime']),
-                "BTCUSDT",
-                "LONG",
-                entry,
-                sl,
-                tp,
-                exit_price,
-                pnl
-            ))
-
-            position = 0
-
-    elif position == -1:
-        if row['high'] >= sl:
-            pnl = -risk
-            exit_price = sl
-
-        elif row['low'] <= tp:
-            pnl = risk * 1.5
-            exit_price = tp
-
-        else:
-            pnl = None
-
-        if pnl is not None:
-            balance *= (1 + pnl)
-            trades.append(pnl)
-
-            cursor.execute("""
-            INSERT INTO trades (datetime, symbol, side, entry, sl, tp, exit, pnl)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                str(row['datetime']),
-                "BTCUSDT",
-                "SHORT",
-                entry,
-                sl,
-                tp,
-                exit_price,
-                pnl
-            ))
-
-            position = 0
-
-    # ==================
-    # === ENTRY ========
-    # ==================
-    if position == 0:
+        if pd.isna(row['atr']) or pd.isna(row['atr_mean']):
+            time.sleep(10)
+            continue
 
         trend_up = row['ema9'] > row['ema200']
         trend_down = row['ema9'] < row['ema200']
 
-        vol_ok = row['atr'] > row['atr_mean']
-
         bullish = row['ha_close'] > row['ha_open']
         bearish = row['ha_close'] < row['ha_open']
 
-        if trend_up and bullish and vol_ok:
-            entry = row['close']
-            sl = row['swing_low'] - row['atr']
-            tp = entry + (entry - sl) * 1.5
-            entry_time = row['datetime']
-            position = 1
+        vol_ok = row['atr'] > row['atr_mean']
 
-        elif trend_down and bearish and vol_ok:
-            entry = row['close']
-            sl = row['swing_high'] + row['atr']
-            tp = entry - (sl - entry) * 1.5
-            entry_time = row['datetime']
-            position = -1
+        if position == 0:
 
-# commit ครั้งเดียว
-conn.commit()
+            if trend_up and bullish and vol_ok:
+                entry = row['close']
+                sl = row['swing_low'] - row['atr']
+                tp = entry + (entry - sl) * 1.5
 
-# ==============================
-# === RESULT ===================
-# ==============================
-total = len(trades)
-winrate = len([t for t in trades if t > 0]) / total * 100 if total else 0
+                amount = calculate_size(balance, entry, sl, risk)
 
-print("\n==== RESULT ====")
-print(f"Balance: {balance:.2f}")
-print(f"Trades: {total}")
-print(f"Winrate: {winrate:.2f}%")
+                if amount > 0:
+                    open_long(amount)
+                    position = 1
 
-# ==============================
-# === LOAD FROM DB ============
-# ==============================
-df_trades = pd.read_sql("SELECT * FROM trades", conn)
+                    print(f'LONG | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}')
 
-print("\n==== DB SUMMARY ====")
-print("Total trades:", len(df_trades))
-print("Winrate:", (df_trades['pnl'] > 0).mean() * 100)
+            elif trend_down and bearish and vol_ok:
+                entry = row['close']
+                sl = row['swing_high'] + row['atr']
+                tp = entry - (sl - entry) * 1.5
 
-conn.close()
+                amount = calculate_size(balance, entry, sl, risk)
+
+                if amount > 0:
+                    open_short(amount)
+                    position = -1
+
+                    print(f'SHORT | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}')
+
+        time.sleep(60)
+
+    except Exception as e:
+        print('ERROR:', e)
+        time.sleep(10)
