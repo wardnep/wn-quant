@@ -1,12 +1,59 @@
 import ccxt
 
 exchange = ccxt.binance({
-    'apiKey': 'uHM7aOZMgcnG0VJ28qUHD4dsDXQ5nBWJMMbUC5Kulqr2V1lnVHKsDz1l7UMIArXa',
-    'secret': '8qPb3w9cbQP2iin6pzyWt54NTPtNfBM2oUc5V52uhHa7wvQZ5PPUqLeYMqOBd86',
+    'apiKey': 'coqcNImEcujq0iBu6xj2WdNFOW96KtKe9AbjpgQvC6c5ibL66bNkMQo9Jq0EUSTa',
+    'secret': '9vUCPrVFjk8PDAVQnCmYvPP0nBIcvtvVvgNztnTM1YK42IMO4PUymWqkSWmpooLZ',
     'enableRateLimit': True,
     'options': {
-        'defaultType': 'future'
+        'defaultType': 'future',
+        'adjustForTimeDifference': True
     }
 })
 
-exchange.set_sandbox_mode(True)
+exchange.enable_demo_trading(True)
+
+balance = exchange.fetch_balance()
+usdt_balance = balance['USDT']['free']
+print(f'Available USDT: {usdt_balance}')
+
+#######################################################################################################################################
+
+symbol = 'BTC/USDT'
+amount = 0.001
+
+# entry_order = exchange.create_order(
+#     symbol='BTC/USDT',
+#     type='market',
+#     side='buy',
+#     amount=0.001
+# )
+
+# print(entry_order)
+
+sl_price = 70000
+tp_price = 80000
+
+sl_order = exchange.create_order(
+    symbol=symbol,
+    type='STOP_MARKET',
+    side='sell',
+    amount=amount,
+    params={
+        'stopPrice': sl_price,
+        'closePosition': True
+    }
+)
+
+tp_order = exchange.create_order(
+    symbol=symbol,
+    type='TAKE_PROFIT_MARKET',
+    side='sell',
+    amount=amount,
+    params={
+        'stopPrice': tp_price,
+        'closePosition': True
+    }
+)
+
+print(sl_order)
+print(tp_order)
