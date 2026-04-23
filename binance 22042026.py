@@ -115,6 +115,7 @@ exchange = ccxt.binance({
     'apiKey': API_KEY,
     'secret': API_SECRET,
     'enableRateLimit': True,
+    'timeout': 60000,  # 60 วินาที
     'options': {
         'defaultType': 'future',
         'adjustForTimeDifference': True
@@ -178,13 +179,20 @@ while True:
         vol_ok = row['atr'] > row['atr_mean']
 
         positions = exchange.fetch_positions(['BTC/USDT'])
-        pos = next((p for p in positions if float(p['contracts']) > 0), None)
-        if not pos:
-            position = 0
-        elif pos['side'] == 'long':
-            position = 1
-        else:
-            position = -1
+        position = 0
+        for p in positions:
+            try:
+                contracts = float(p.get('contracts', 0))
+                side = p.get('side')
+
+                if contracts > 0:
+                    if side == 'long':
+                        position = 1
+                    elif side == 'short':
+                        position = -1
+
+            except Exception:
+                continue
 
         if position == 0:
 
