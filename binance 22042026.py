@@ -3,6 +3,9 @@ import numpy as np
 import os
 import pandas as pd
 import time
+from flask import Flask, jsonify
+import threading
+from datetime import datetime, timezone, timedelta
 
 from dotenv import load_dotenv
 from utils.orders import (
@@ -80,6 +83,27 @@ def prepare_dataframe(df):
     return df
 
 ###########################################################################
+# Health Check
+###########################################################################
+
+app = Flask(__name__)
+
+bot_status = {
+    "running": True,
+    "last_heartbeat": time.time(),
+    "position": 0
+}
+
+@app.route("/status")
+def status():
+    return jsonify(bot_status)
+
+def run_api():
+    app.run(host="0.0.0.0", port=5000)
+
+threading.Thread(target=run_api, daemon=True).start()
+
+###########################################################################
 # Binance Connect
 ###########################################################################
 
@@ -123,6 +147,12 @@ last_candle_time = None
 
 while True:
     try:
+        ts = time.time()
+        bot_status["last_heartbeat"] = datetime.fromtimestamp(
+            ts, tz=timezone(timedelta(hours=7))
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        bot_status["position"] = position
+
         df = load_data()
         df = prepare_dataframe(df)
 
@@ -130,7 +160,6 @@ while True:
         current_candle_time = row['datetime']
 
         if last_candle_time == current_candle_time:
-            print('waiting new candle...')
             time.sleep(5)
             continue
 
@@ -148,6 +177,19 @@ while True:
 
         vol_ok = row['atr'] > row['atr_mean']
 
+        positions = exchange.fetch_positions(['BTC/USDT'])
+
+        pos = positions[0]
+
+        contracts = float(pos['contracts'])
+
+        if contracts == 0:
+            position = 0
+        elif pos['side'] == 'long':
+            position = 1
+        elif pos['side'] == 'short':
+            position = -1
+
         if position == 0:
 
             if trend_up and bullish and vol_ok:
@@ -158,9 +200,9 @@ while True:
                 amount = position_size(balance, entry, sl, risk)
 
                 if amount > 0:
-                    # open_long(exchange, symbol, amount)
-                    # place_sl(exchange, symbol, amount, sl, 'sell')
-                    # place_tp(exchange, symbol, amount, tp, 'sell')
+                    open_long(exchange, symbol, amount)
+                    place_sl(exchange, symbol, amount, sl, 'sell')
+                    place_tp(exchange, symbol, amount, tp, 'sell')
                     position = 1
 
                     # create_log(print(f'LONG | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
@@ -174,15 +216,14 @@ while True:
                 amount = position_size(balance, entry, sl, risk)
 
                 if amount > 0:
-                    # open_short(exchange, symbol, amount)
-                    # place_sl(exchange, symbol, amount, sl, 'buy')
-                    # place_tp(exchange, symbol, amount, sl, 'buy')
+                    open_short(exchange, symbol, amount)
+                    place_sl(exchange, symbol, amount, sl, 'buy')
+                    place_tp(exchange, symbol, amount, sl, 'buy')
                     position = -1
 
                     # create_log(print(f'SHORT | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
                     print(f'SHORT | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}')
 
-        print('fetch...')
         time.sleep(60)
 
     except Exception as e:
