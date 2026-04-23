@@ -144,7 +144,6 @@ def position_size(balance, entry, sl, risk):
 ###########################################################################
 
 last_candle_time = None
-
 while True:
     try:
         ts = time.time()
@@ -205,8 +204,7 @@ while True:
                     place_tp(exchange, symbol, amount, tp, 'sell')
                     position = 1
 
-                    # create_log(print(f'LONG | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
-                    print(f'LONG | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}')
+                    create_log(print(f'LONG | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
 
             elif trend_down and bearish and vol_ok:
                 entry = row['close']
@@ -221,8 +219,7 @@ while True:
                     place_tp(exchange, symbol, amount, sl, 'buy')
                     position = -1
 
-                    # create_log(print(f'SHORT | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
-                    print(f'SHORT | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}')
+                    create_log(print(f'SHORT | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
 
         time.sleep(60)
 
