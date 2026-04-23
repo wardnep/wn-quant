@@ -6,6 +6,7 @@ import time
 from flask import Flask, jsonify
 import threading
 from datetime import datetime, timezone, timedelta
+import traceback
 
 from dotenv import load_dotenv
 from utils.orders import (
@@ -177,8 +178,13 @@ while True:
         vol_ok = row['atr'] > row['atr_mean']
 
         positions = exchange.fetch_positions(['BTC/USDT'])
-
-        pos = positions[0]
+        pos = next((p for p in positions if float(p['contracts']) > 0), None)
+        if not pos:
+            position = 0
+        elif pos['side'] == 'long':
+            position = 1
+        else:
+            position = -1
 
         contracts = float(pos['contracts'])
 
@@ -221,8 +227,11 @@ while True:
 
                     create_log(print(f'SHORT | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
 
+        print(datetime.fromtimestamp(
+            ts, tz=timezone(timedelta(hours=7))
+        ).strftime("%Y-%m-%d %H:%M:%S"))
         time.sleep(60)
 
     except Exception as e:
-        create_log(print('ERROR:', e))
+        create_log(traceback.format_exc())
         time.sleep(10)
