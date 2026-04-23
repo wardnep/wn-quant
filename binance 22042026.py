@@ -186,15 +186,6 @@ while True:
         else:
             position = -1
 
-        contracts = float(pos['contracts'])
-
-        if contracts == 0:
-            position = 0
-        elif pos['side'] == 'long':
-            position = 1
-        elif pos['side'] == 'short':
-            position = -1
-
         if position == 0:
 
             if trend_up and bullish and vol_ok:
