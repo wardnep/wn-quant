@@ -55,7 +55,14 @@ def load_data():
     for attempt in range(5):
         try:
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=300)
-            return ohlcv
+
+            df = pd.DataFrame(ohlcv, columns=[
+                'timestamp', 'open', 'high', 'low', 'close', 'volume'
+            ])
+
+            df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+            return df
 
         except ccxt.RequestTimeout as e:
             create_log(f"LOAD_DATA | timeout... attempt {attempt+1}")
