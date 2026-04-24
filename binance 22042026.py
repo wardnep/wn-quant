@@ -149,6 +149,9 @@ last_candle_time = None
 while True:
     try:
         ts = time.time()
+        ts_thai = datetime.fromtimestamp(
+            ts, tz=timezone(timedelta(hours=7))
+        ).strftime("%Y-%m-%d %H:%M:%S")
         bot_status["last_heartbeat"] = datetime.fromtimestamp(
             ts, tz=timezone(timedelta(hours=7))
         ).strftime("%Y-%m-%d %H:%M:%S")
@@ -204,12 +207,11 @@ while True:
                 amount = position_size(balance, entry, sl, risk)
 
                 if amount > 0:
+                    create_log(print(f'LONG | {ts_thai} entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
                     open_long(exchange, symbol, amount)
                     place_sl(exchange, symbol, amount, sl, 'sell')
                     place_tp(exchange, symbol, amount, tp, 'sell')
                     position = 1
-
-                    create_log(print(f'LONG | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
 
             elif trend_down and bearish and vol_ok:
                 entry = row['close']
@@ -219,16 +221,13 @@ while True:
                 amount = position_size(balance, entry, sl, risk)
 
                 if amount > 0:
+                    create_log(print(f'SHORT | {ts_thai} entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
                     open_short(exchange, symbol, amount)
                     place_sl(exchange, symbol, amount, sl, 'buy')
                     place_tp(exchange, symbol, amount, sl, 'buy')
                     position = -1
 
-                    create_log(print(f'SHORT | entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
-
-        print(datetime.fromtimestamp(
-            ts, tz=timezone(timedelta(hours=7))
-        ).strftime("%Y-%m-%d %H:%M:%S"))
+        print(ts_thai)
         time.sleep(60)
 
     except Exception as e:
