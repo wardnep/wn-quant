@@ -10,8 +10,7 @@ import traceback
 
 from dotenv import load_dotenv
 from utils.orders import (
-    open_long,
-    open_short,
+    open_position,
     place_sl,
     place_tp
 )
@@ -70,7 +69,7 @@ def load_data():
             time.sleep(2 ** attempt)
 
         except Exception as e:
-            create_log("LOAD_DATA | error:", e)
+            create_log(traceback.format_exc())
             time.sleep(2 ** attempt)
 
     return None
@@ -227,7 +226,8 @@ while True:
 
                 if amount > 0:
                     create_log(print(f'LONG | {ts_thai} entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
-                    open_long(exchange, symbol, amount)
+                    ##
+                    open_position(exchange, symbol, amount, 'buy')
                     place_sl(exchange, symbol, amount, sl, 'sell')
                     place_tp(exchange, symbol, amount, tp, 'sell')
                     position = 1
@@ -241,9 +241,10 @@ while True:
 
                 if amount > 0:
                     create_log(print(f'SHORT | {ts_thai} entry={entry:.2f} sl={sl:.2f} tp={tp:.2f}'))
-                    open_short(exchange, symbol, amount)
+                    ##
+                    open_position(exchange, symbol, amount, 'sell')
                     place_sl(exchange, symbol, amount, sl, 'buy')
-                    place_tp(exchange, symbol, amount, sl, 'buy')
+                    place_tp(exchange, symbol, amount, tp, 'buy')
                     position = -1
 
         print(ts_thai)
