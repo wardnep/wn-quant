@@ -52,15 +52,21 @@ def heikin_ashi(df):
     return ha
 
 def load_data():
-    ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=300)
+    for attempt in range(5):
+        try:
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=300)
+            return ohlcv
 
-    df = pd.DataFrame(ohlcv, columns=[
-        'timestamp', 'open', 'high', 'low', 'close', 'volume'
-    ])
+        except ccxt.RequestTimeout as e:
+            create_log(f"LOAD_DATA | timeout... attempt {attempt+1}")
 
-    df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+            time.sleep(2 ** attempt)
 
-    return df
+        except Exception as e:
+            create_log("LOAD_DATA | error:", e)
+            time.sleep(2 ** attempt)
+
+    return None
 
 def prepare_dataframe(df):
     df = heikin_ashi(df)
@@ -158,6 +164,12 @@ while True:
         bot_status["position"] = position
 
         df = load_data()
+
+        if df is None:
+            create_log("SKIP | {ts_thai} API fail")
+            time.sleep(10)
+            continue
+
         df = prepare_dataframe(df)
 
         row = df.iloc[-2]
