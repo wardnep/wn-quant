@@ -24,10 +24,10 @@ exchange = ccxt.binance({
     'apiKey': os.getenv('BINANCE_DEMO_API_KEY'),
     'secret': os.getenv('BINANCE_DEMO_API_SECRET'),
     'enableRateLimit': True,
-    'options': {'defaultType': 'future'}
+    'options': {
+        'defaultType': 'future',
+    }
 })
-
-exchange.set_sandbox_mode(True)
 
 exchange.set_leverage(10, symbol)
 create_log("Leverage set 10x")
