@@ -12,28 +12,28 @@ load_dotenv()
 
 symbol = 'BTC/USDT'
 timeframe = '15m'
-# risk = 0.005  # ✅ 0.5%
-risk = 0.01  # ✅ 1%
+risk = 0.01  # หรือ 0.005
 
 last_candle = None
 last_trade_candle = None
 
 # =========================
-# Binance Connect
+# Binance
 # =========================
 exchange = ccxt.binance({
-    'apiKey': os.getenv('BINANCE_API_KEY'),
-    'secret': os.getenv('BINANCE_API_SECRET'),
+    'apiKey': os.getenv('BINANCE_DEMO_API_KEY'),
+    'secret': os.getenv('BINANCE_DEMO_API_SECRET'),
     'enableRateLimit': True,
-    'options': {
-        'defaultType': 'future',
-    }
+    'options': {'defaultType': 'future'}
 })
 
+exchange.set_sandbox_mode(True)
+
 exchange.set_leverage(10, symbol)
+create_log("Leverage set 10x")
 
 # =========================
-# Safe Order (Retry)
+# Safe order
 # =========================
 def safe_order(func, *args, **kwargs):
     for _ in range(3):
@@ -45,7 +45,7 @@ def safe_order(func, *args, **kwargs):
     return None
 
 # =========================
-# Position Sync
+# Position sync
 # =========================
 def fetch_position():
     try:
@@ -65,15 +65,28 @@ def fetch_position():
         create_log(f"FETCH POSITION ERROR: {e}")
         return 0
 
-def wait_for_position():
-    for _ in range(5):
-        if fetch_position() != 0:
-            return True
+def wait_for_full_position(expected_side):
+    for _ in range(10):
+        positions = exchange.fetch_positions([symbol])
+
+        for p in positions:
+            if p['symbol'] != symbol:
+                continue
+
+            contracts = float(p.get('contracts', 0))
+            side = p.get('side')
+
+            if contracts > 0:
+                if (expected_side == 'buy' and side == 'long') or \
+                   (expected_side == 'sell' and side == 'short'):
+                    return True
+
         time.sleep(0.5)
+
     return False
 
 # =========================
-# Position Size
+# Position size
 # =========================
 def position_size(balance, entry, sl):
     stop_distance = abs(entry - sl)
@@ -138,7 +151,7 @@ def place_tp(side, price):
 def load_data():
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=300)
     df = pd.DataFrame(ohlcv, columns=[
-        'timestamp', 'open', 'high', 'low', 'close', 'volume'
+        'timestamp','open','high','low','close','volume'
     ])
     df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
     return df
@@ -153,15 +166,13 @@ def prepare(df):
     return df
 
 # =========================
-# Main Loop
+# Main loop
 # =========================
 while True:
     try:
         balance = exchange.fetch_balance()['USDT']['free']
 
-        df = load_data()
-        df = prepare(df)
-
+        df = prepare(load_data())
         row = df.iloc[-2]
         candle_time = row['datetime']
 
@@ -172,9 +183,6 @@ while True:
         last_candle = candle_time
 
         position = fetch_position()
-
-        if position != 0:
-            create_log(f"Already in position: {position}")
 
         trend_up = row['ema9'] > row['ema200']
         trend_down = row['ema9'] < row['ema200']
@@ -191,25 +199,30 @@ while True:
                 sl = row['swing_low'] - row['atr']
                 tp = entry + (entry - sl) * 1.5
 
+                sl = float(exchange.price_to_precision(symbol, sl))
+                tp = float(exchange.price_to_precision(symbol, tp))
+
                 amount = position_size(balance, entry, sl)
 
-                if amount > 0:
-                    order = open_position('buy', amount)
-                    if not order:
-                        continue
+                order = open_position('buy', amount)
+                if not order:
+                    continue
 
-                    if not wait_for_position():
-                        create_log("Position not opened")
-                        continue
+                if not wait_for_full_position('buy'):
+                    create_log("LONG not opened")
+                    continue
 
-                    sl_order = place_sl('sell', sl)
-                    tp_order = place_tp('sell', tp)
+                create_log(f"Placing SL {sl} / TP {tp}")
 
-                    if not sl_order or not tp_order:
-                        create_log("SL/TP failed")
+                sl_order = place_sl('sell', sl)
+                tp_order = place_tp('sell', tp)
 
-                    create_log(f"LONG entry={entry} sl={sl} tp={tp}")
-                    last_trade_candle = candle_time
+                if not sl_order:
+                    create_log("SL failed")
+                if not tp_order:
+                    create_log("TP failed")
+
+                last_trade_candle = candle_time
 
             # SHORT
             elif trend_down and vol_ok:
@@ -217,25 +230,30 @@ while True:
                 sl = row['swing_high'] + row['atr']
                 tp = entry - (sl - entry) * 1.5
 
+                sl = float(exchange.price_to_precision(symbol, sl))
+                tp = float(exchange.price_to_precision(symbol, tp))
+
                 amount = position_size(balance, entry, sl)
 
-                if amount > 0:
-                    order = open_position('sell', amount)
-                    if not order:
-                        continue
+                order = open_position('sell', amount)
+                if not order:
+                    continue
 
-                    if not wait_for_position():
-                        create_log("Position not opened")
-                        continue
+                if not wait_for_full_position('sell'):
+                    create_log("SHORT not opened")
+                    continue
 
-                    sl_order = place_sl('buy', sl)
-                    tp_order = place_tp('buy', tp)
+                create_log(f"Placing SL {sl} / TP {tp}")
 
-                    if not sl_order or not tp_order:
-                        create_log("SL/TP failed")
+                sl_order = place_sl('buy', sl)
+                tp_order = place_tp('buy', tp)
 
-                    create_log(f"SHORT entry={entry} sl={sl} tp={tp}")
-                    last_trade_candle = candle_time
+                if not sl_order:
+                    create_log("SL failed")
+                if not tp_order:
+                    create_log("TP failed")
+
+                last_trade_candle = candle_time
 
         create_log(datetime.now())
         time.sleep(60)
