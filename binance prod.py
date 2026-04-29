@@ -10,9 +10,9 @@ from utils.log import create_log
 
 load_dotenv()
 
-symbol = 'BTC/USDT'
+symbol = 'PAXG/USDT'
 timeframe = '15m'
-risk = 0.01  # หรือ 0.005
+risk = 0.05
 
 last_candle = None
 last_trade_candle = None
@@ -21,16 +21,16 @@ last_trade_candle = None
 # Binance
 # =========================
 exchange = ccxt.binance({
-    'apiKey': os.getenv('BINANCE_DEMO_API_KEY'),
-    'secret': os.getenv('BINANCE_DEMO_API_SECRET'),
+    'apiKey': os.getenv('BINANCE_REAL_API_KEY'),
+    'secret': os.getenv('BINANCE_REAL_API_SECRET'),
     'enableRateLimit': True,
     'options': {
         'defaultType': 'future',
     }
 })
 
-exchange.set_leverage(10, symbol)
-create_log("Leverage set 10x")
+exchange.set_leverage(50, symbol)
+create_log("Leverage set 50x")
 
 # =========================
 # Safe order
@@ -95,15 +95,15 @@ def position_size(balance, entry, sl):
 
     risk_amount = balance * risk
     size_usd = risk_amount / stop_distance
-    size_btc = size_usd / entry
+    size_cypto = size_usd / entry
 
     market = exchange.market(symbol)
     min_amount = market['limits']['amount']['min']
 
-    if size_btc < min_amount:
+    if size_cypto < min_amount:
         return 0
 
-    size = exchange.amount_to_precision(symbol, size_btc)
+    size = exchange.amount_to_precision(symbol, size_cypto)
     return float(size)
 
 # =========================
