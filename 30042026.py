@@ -20,7 +20,7 @@ load_dotenv()
 symbol = 'BTC/USDT:USDT'   # ❗ futures symbol
 timeframe = '15m'
 risk = 0.01                # 1% risk ต่อไม้ (ปรับตามจริง)
-leverage = 10              # แนะนำ 5–10x
+leverage = 5              # แนะนำ 5–10x
 
 last_candle = None
 last_trade_candle = None
