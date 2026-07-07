@@ -26,9 +26,13 @@ Usage:
 import argparse
 import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 
 # ----------------------------------------------------------------------
@@ -257,6 +261,10 @@ def compute_stats(trades_df: pd.DataFrame, equity_df: pd.DataFrame) -> dict:
 
 
 def plot_equity(equity_df: pd.DataFrame, trades_df: pd.DataFrame, out_path: str):
+    if not HAS_MATPLOTLIB:
+        print("(matplotlib not installed -- skipping chart. `pip install matplotlib` to enable.)")
+        return
+
     fig, axes = plt.subplots(2, 1, figsize=(12, 8), gridspec_kw={"height_ratios": [2, 1]})
 
     axes[0].plot(equity_df["datetime"], equity_df["equity"], color="#2563eb", linewidth=1.2)
@@ -274,6 +282,40 @@ def plot_equity(equity_df: pd.DataFrame, trades_df: pd.DataFrame, out_path: str)
     plt.tight_layout()
     plt.savefig(out_path, dpi=130)
     plt.close(fig)
+
+
+# ----------------------------------------------------------------------
+# Parameter sweep
+# ----------------------------------------------------------------------
+def run_sweep(df: pd.DataFrame, ema_pullbacks=(21, 34), atr_mults=(1.0, 1.5, 2.0, 2.5, 3.0),
+              rrs=(1.5, 2.0, 3.0), rsi_period=14, rsi_long_th=45, rsi_short_th=55,
+              atr_period=14, pullback_atr_dist=1.0, ema_fast=50, ema_slow=200,
+              max_bars=40, risk_pct=1.0, starting_equity=10000.0) -> pd.DataFrame:
+    """
+    Sweeps ema_pullback x atr_mult x rr and returns one row of stats per
+    combination, sorted by expectancy_R descending. atr_mult range covers
+    1.0-3.0 since BTC's wick/volatility profile on 4H tends to need a wider
+    buffer than gold/forex before the tighter end (1.0) stops getting
+    stopped out by noise.
+    """
+    rows = []
+    for ema_pb in ema_pullbacks:
+        d = add_indicators(df, ema_fast, ema_slow, ema_pb, rsi_period, atr_period)
+        d = generate_signals(d, rsi_long_th, rsi_short_th, pullback_atr_dist)
+        for atr_mult, rr in [(a, r) for a in atr_mults for r in rrs]:
+            trades_df, equity_df = run_backtest(
+                d, atr_mult=atr_mult, rr=rr, max_bars=max_bars,
+                risk_pct=risk_pct, starting_equity=starting_equity
+            )
+            stats = compute_stats(trades_df, equity_df)
+            stats.pop("by_year", None)
+            stats.update({"ema_pullback": ema_pb, "atr_mult": atr_mult, "rr": rr})
+            rows.append(stats)
+
+    out = pd.DataFrame(rows)
+    if "expectancy_R" in out.columns:
+        out = out.sort_values("expectancy_R", ascending=False)
+    return out
 
 
 # ----------------------------------------------------------------------
@@ -296,12 +338,29 @@ def main():
     p.add_argument("--risk_pct", type=float, default=1.0)
     p.add_argument("--equity", type=float, default=10000.0)
     p.add_argument("--out_prefix", default="btc_backtest")
+    p.add_argument("--sweep", action="store_true",
+                   help="Run a parameter sweep over ema_pullback x atr_mult x rr "
+                        "instead of a single backtest, and save results to CSV.")
     args = p.parse_args()
 
     print(f"Loading data from {args.csv} ...")
     df = load_csv(args.csv)
     print(f"Loaded {len(df)} bars from {df['datetime'].min()} to {df['datetime'].max()}")
 
+    if args.sweep:
+        sweep_df = run_sweep(
+            df, rsi_period=args.rsi_period, rsi_long_th=args.rsi_long_th,
+            rsi_short_th=args.rsi_short_th, atr_period=args.atr_period,
+            pullback_atr_dist=args.pullback_atr_dist, ema_fast=args.ema_fast,
+            ema_slow=args.ema_slow, max_bars=args.max_bars, risk_pct=args.risk_pct,
+            starting_equity=args.equity,
+        )
+        out_csv = f"{args.out_prefix}_sweep.csv"
+        sweep_df.to_csv(out_csv, index=False)
+        print("\n===== PARAMETER SWEEP (top 15 by expectancy_R) =====")
+        print(sweep_df.head(15).to_string(index=False))
+        print(f"\nFull sweep saved to {out_csv}")
+        return
     df = add_indicators(df, args.ema_fast, args.ema_slow, args.ema_pullback,
                          args.rsi_period, args.atr_period)
     df = generate_signals(df, args.rsi_long_th, args.rsi_short_th, args.pullback_atr_dist)
@@ -328,7 +387,8 @@ def main():
 
         chart_path = f"{args.out_prefix}_equity.png"
         plot_equity(equity_df, trades_df, chart_path)
-        print(f"Equity chart saved to {chart_path}")
+        if HAS_MATPLOTLIB:
+            print(f"Equity chart saved to {chart_path}")
 
 
 if __name__ == "__main__":
